@@ -1,0 +1,84 @@
+.program nes_write
+.side_set 1 opt
+
+public write:
+    set pindirs 1  side 1  ; Set pin to output
+write_loop:
+.wrap_target
+    ; set pins, 1    ; Set data high to start with
+    ; pull block     ; Fetch next byte into OSR if we are done with the current one
+    ; TODO: just flip the bits in the high-level code and simply do `out pins, 1` and remove the mov
+    ; out x, 1               ; Shift a bit from OSR to scratch register
+    ; mov pins, !x           ; Place inverted bit value on data pin (data line is active low)
+    out pins, 1            ; Shift a bit from OSR to data pin
+    wait 0 pin 0           ; Wait for rising clock edge
+    wait 1 pin 0  side 0   ; Wait for falling clock edge before shifting out the next bit
+    ; jmp read_loop
+.wrap
+
+
+.program latch
+
+public latch:
+    set pindirs 0
+latch_loop:
+.wrap_target
+    wait 1 pin 0    ; Wait for rising edge on latch
+    irq 0           ; Raise latch interrupt
+    wait 0 pin 0    ; Wait for falling edge before looping so the same pulse doesn't trigger the interrupt more than once
+    ; jmp latch_loop
+.wrap
+
+
+% c-sdk {
+#include <hardware/clocks.h>
+
+static inline pio_sm_config nes_write_program_get_config(PIO pio, uint sm, uint offset, uint data_pin, uint clock_pin, uint packet_size) {
+    pio_gpio_init(pio, data_pin);
+
+    pio_sm_config c = nes_write_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, data_pin, 1);
+    sm_config_set_set_pins(&c, data_pin, 1);
+    sm_config_set_sideset_pins(&c, data_pin);
+    sm_config_set_in_pins(&c, clock_pin);
+    // Shift to right, autopull based on packet_size
+    sm_config_set_out_shift(&c, true, true, packet_size);
+
+    //int cycles_per_bit = shiftreg_T1 + shiftreg_T2 + shiftreg_T3;
+    //int bitrate = 250000;
+    //float div = clock_get_hz(clk_sys) / (cycles_per_bit * bitrate);
+    //sm_config_set_clkdiv(&c, div);
+    //sm_config_set_clkdiv(&c, 1);
+
+    return c;
+}
+
+//static inline pio_sm_config latch_program_get_config(PIO pio, uint sm, uint offset, uint latch_pin) {
+//    pio_sm_config c = latch_program_get_default_config(offset);
+//    sm_config_set_in_pins(&c, latch_pin);
+//    return c;
+//}
+
+static inline void nes_write_program_init(
+    PIO pio,
+    uint sm,
+    uint offset,
+    uint data_pin,
+    uint clock_pin,
+    pio_sm_config *c
+) {
+    pio_sm_init(pio, sm, offset, c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+//static inline void latch_program_init(
+//    PIO pio,
+//    uint sm,
+//    uint offset,
+//    uint pin,
+//    pio_sm_config *c
+//) {
+//    pio_sm_init(pio, sm, offset + shiftreg_offset_read, c);
+//    pio_sm_set_enabled(pio, sm, true);
+//}
+%}
