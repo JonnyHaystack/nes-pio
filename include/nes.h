@@ -5,7 +5,7 @@
 #include <pico/stdlib.h>
 
 /**
- * @brief A structure representing a Joybus instance on a given GPIO pin
+ * @brief A structure representing a NES/SNES controller/console connection
  */
 typedef struct {
     uint data_pin;
